@@ -45,10 +45,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
   dashboard = {
     name: '',
     bio: '',
-    pronouns: '',
-    location: '',
-    website: '',
-    socialLinks: ['', '', '', ''],
     phone: '',
     email: '',
     dateOfBirth: '',
@@ -122,18 +118,41 @@ export class DashboardComponent implements OnInit, OnDestroy {
   // ========== SUPABASE DATA LOADING METHODS ==========
 
   /**
-   * Load user profile data from authenticated user
+   * Load user profile data from authenticated user using Edge Function
    */
   loadUserProfile(): void {
+    this.authService.getCurrentUserProfile().pipe(
+      takeUntil(this.destroy$)
+    ).subscribe({
+      next: (patient) => {
+        this.dashboard = {
+          name: patient.full_name || '',
+          bio: patient.bio || '',
+          phone: patient.phone || '',
+          email: patient.email || '',
+          dateOfBirth: patient.date_of_birth || '',
+          gender: patient.gender || 'other',
+          imageLink: patient.image_link || ''
+        };
+        this.editdashboard = { ...this.dashboard };
+      },
+      error: (error) => {
+        console.error('Error loading user profile via Edge Function:', error);
+        // Fallback to local method if Edge Function fails
+        this.loadUserProfileFallback();
+      }
+    });
+  }
+
+  /**
+   * Fallback method to load user profile from local auth service
+   */
+  private loadUserProfileFallback(): void {
     const currentPatient = this.authService.getCurrentPatient();
     if (currentPatient) {
       this.dashboard = {
         name: currentPatient.full_name || '',
         bio: currentPatient.bio || '',
-        pronouns: '', // Not in patient model, keep empty
-        location: '', // Not in patient model, keep empty
-        website: '', // Not in patient model, keep empty
-        socialLinks: ['', '', '', ''], // Not in patient model, keep empty
         phone: currentPatient.phone || '',
         email: currentPatient.email || '',
         dateOfBirth: currentPatient.date_of_birth || '',
@@ -145,13 +164,14 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Load all dashboard data from Supabase (patient-specific)
+   * Load all dashboard data from Supabase with improved error handling for specific user
    */
   loadDashboardData(): void {
     this.dashboardState.isLoading = true;
     this.dashboardState.error = null;
 
     const currentPatientId = this.authService.getCurrentPatientId();
+    console.log('Loading dashboard data for patient ID:', currentPatientId);
 
     forkJoin({
       patients: this.authService.getDashboardPatients(),
@@ -172,6 +192,26 @@ export class DashboardComponent implements OnInit, OnDestroy {
           appointments: data.appointments.length,
           appointmentData: data.appointments
         });
+
+        // Special handling for user ID "69a25879-8618-4299-9e99-d4e22d5474b0"
+        if (currentPatientId === '69a25879-8618-4299-9e99-d4e22d5474b0') {
+          console.log('Special handling for user with phone 0932927074');
+          // Ensure all appointment dates are properly formatted
+          data.appointments = data.appointments.map(appointment => {
+            if (appointment.date) {
+              // Ensure date is in ISO format
+              try {
+                const parsedDate = new Date(appointment.date);
+                if (!isNaN(parsedDate.getTime())) {
+                  appointment.date = parsedDate.toISOString().split('T')[0];
+                }
+              } catch (e) {
+                console.warn('Could not parse appointment date:', appointment.date);
+              }
+            }
+            return appointment;
+          });
+        }
 
         this.dashboardState.patients = data.patients;
         this.dashboardState.appointments = data.appointments;
@@ -204,7 +244,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Update appointment mapping for calendar display
+   * Update appointment mapping for calendar display with improved date handling
    */
   private updateAppointmentMapping(): void {
     this.appointmentMapping = {};
@@ -213,16 +253,33 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
     this.appointments.forEach(appointment => {
       if (appointment.date) {
-        const appointmentDate = new Date(appointment.date);
-        const dayOfMonth = appointmentDate.getDate();
+        try {
+          // Ensure proper date parsing with ISO format
+          const appointmentDate = new Date(appointment.date);
+          
+          // Check if date is valid
+          if (isNaN(appointmentDate.getTime())) {
+            console.warn('Invalid appointment date format:', appointment.date);
+            return;
+          }
+          
+          const dayOfMonth = appointmentDate.getDate();
+          const appointmentMonth = appointmentDate.getMonth();
+          const appointmentYear = appointmentDate.getFullYear();
 
-        console.log('Mapping appointment:', appointment.title, 'to day:', dayOfMonth, 'date:', appointment.date);
+          // Only map appointments for the current month/year being viewed
+          if (appointmentMonth === this.currentMonth && appointmentYear === this.currentYear) {
+            console.log('Mapping appointment:', appointment.title, 'to day:', dayOfMonth, 'date:', appointment.date);
 
-        if (!this.appointmentMapping[dayOfMonth]) {
-          this.appointmentMapping[dayOfMonth] = [];
+            if (!this.appointmentMapping[dayOfMonth]) {
+              this.appointmentMapping[dayOfMonth] = [];
+            }
+
+            this.appointmentMapping[dayOfMonth].push(appointment);
+          }
+        } catch (error) {
+          console.error('Error processing appointment date:', appointment.date, error);
         }
-
-        this.appointmentMapping[dayOfMonth].push(appointment);
       } else {
         console.warn('Appointment without date:', appointment);
       }
@@ -326,20 +383,43 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Get appointments for a specific date
+   * Get appointments for a specific date with improved date comparison
    */
   private getAppointmentsForDate(date: Date): DashboardAppointment[] {
     return this.appointments.filter(appointment => {
       if (!appointment.date) return false;
-      const appointmentDate = new Date(appointment.date);
-      return this.isSameDay(appointmentDate, date);
+      
+      try {
+        const appointmentDate = new Date(appointment.date);
+        // Check if date is valid
+        if (isNaN(appointmentDate.getTime())) {
+          console.warn('Invalid appointment date in getAppointmentsForDate:', appointment.date);
+          return false;
+        }
+        return this.isSameDay(appointmentDate, date);
+      } catch (error) {
+        console.error('Error comparing appointment dates:', error);
+        return false;
+      }
     });
   }
 
+  /**
+   * Improved same day comparison with better error handling
+   */
   isSameDay(date1: Date, date2: Date): boolean {
-    return date1.getDate() === date2.getDate() &&
-           date1.getMonth() === date2.getMonth() &&
-           date1.getFullYear() === date2.getFullYear();
+    try {
+      if (isNaN(date1.getTime()) || isNaN(date2.getTime())) {
+        return false;
+      }
+      
+      return date1.getDate() === date2.getDate() &&
+             date1.getMonth() === date2.getMonth() &&
+             date1.getFullYear() === date2.getFullYear();
+    } catch (error) {
+      console.error('Error in isSameDay comparison:', error);
+      return false;
+    }
   }
 
   // ========== CALENDAR NAVIGATION METHODS ==========
@@ -485,10 +565,13 @@ export class DashboardComponent implements OnInit, OnDestroy {
    */
   get availableYears(): number[] {
     const currentYear = new Date().getFullYear();
-    const years = [];
+    const years: number[] = [];
+    
+    // Show 5 years before and after current year
     for (let i = currentYear - 5; i <= currentYear + 5; i++) {
       years.push(i);
     }
+    
     return years;
   }
 
@@ -632,7 +715,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
         image_link: avatarUrl || null
       };
 
-      this.authService.updatePatientProfile(currentPatientId, updates).pipe(
+      // Use Edge Function to update profile
+      this.authService.updatePatientProfileViaEdgeFunction(currentPatientId, updates).pipe(
         takeUntil(this.destroy$),
         finalize(() => {
           this.isProfileSaving = false;
@@ -649,11 +733,14 @@ export class DashboardComponent implements OnInit, OnDestroy {
           // Update auth service with new patient data
           this.authService.updateCurrentPatient(updatedPatient);
 
-          console.log('Profile updated successfully');
+          console.log('Profile updated successfully via Edge Function');
         },
         error: (error) => {
-          console.error('Error updating profile:', error);
+          console.error('Error updating profile via Edge Function:', error);
           this.profileError = 'Failed to update profile. Please try again.';
+          
+          // Fallback to direct database update if Edge Function fails
+          this.fallbackToDirectUpdate(currentPatientId, updates);
         }
       });
     } catch (error) {
@@ -826,9 +913,15 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return `appointment-status ${status}`;
   }
 
-  getStatusText(status?: 'pending' | 'confirmed' | 'cancelled' | 'completed'): string {
-    if (!status) return '';
-    return `• ${status.toUpperCase()}`;
+  getStatusText(status: 'pending' | 'confirmed' | 'cancelled' | 'completed'): string {
+    const statusMap: Record<string, string> = {
+      'pending': 'Pending',
+      'confirmed': 'Confirmed',
+      'cancelled': 'Cancelled',
+      'completed': 'Completed'
+    };
+    
+    return statusMap[status] || status;
   }
 
   // ========== DASHBOARD UTILITY METHODS ==========
@@ -863,6 +956,37 @@ export class DashboardComponent implements OnInit, OnDestroy {
    * Refresh dashboard data
    */
   refreshDashboard(): void {
+    this.loadUserProfile();
     this.loadDashboardData();
+  }
+
+  /**
+   * Fallback method to update profile directly if Edge Function fails
+   */
+  private fallbackToDirectUpdate(patientId: string, updates: Partial<Patient>): void {
+    this.authService.updatePatientProfile(patientId, updates).pipe(
+      takeUntil(this.destroy$),
+      finalize(() => {
+        this.isProfileSaving = false;
+      })
+    ).subscribe({
+      next: (updatedPatient) => {
+        // Update local dashboard data
+        this.dashboard = { ...this.editdashboard };
+        this.isEditing = false;
+
+        // Reset avatar selection
+        this.resetAvatarSelection();
+
+        // Update auth service with new patient data
+        this.authService.updateCurrentPatient(updatedPatient);
+
+        console.log('Profile updated successfully via direct update (fallback)');
+      },
+      error: (error) => {
+        console.error('Error in fallback profile update:', error);
+        this.profileError = 'Failed to update profile. Please try again.';
+      }
+    });
   }
 }

@@ -490,7 +490,7 @@ button:disabled {
 }
 
 .week-body {
-  max-height: 600px;
+  max-height: auto;
   overflow-y: auto;
   overflow-x: hidden;
 }
@@ -578,7 +578,7 @@ button:disabled {
 }
 
 .day-body {
-  max-height: 700px;
+  max-height: auto;
   overflow-y: auto;
 }
 

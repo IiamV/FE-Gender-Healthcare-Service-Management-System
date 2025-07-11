@@ -545,4 +545,48 @@ export class AuthService {
       return timeString;
     }
   }
+
+  // Add these new methods for Edge Functions
+
+  /**
+   * Get current user profile using the "me" Edge Function
+   */
+  getCurrentUserProfile(): Observable<Patient> {
+    return from(
+      this.supabase.functions.invoke('me')
+    ).pipe(
+      map(response => {
+        if (response.error) {
+          throw new Error(response.error.message);
+        }
+        return response.data;
+      }),
+      catchError(error => {
+        console.error('Error fetching current user profile:', error);
+        throw error;
+      })
+    );
+  }
+
+  /**
+   * Update patient profile using the "update-patient" Edge Function
+   */
+  updatePatientProfileViaEdgeFunction(patientId: string, updates: Partial<Patient>): Observable<Patient> {
+    return from(
+      this.supabase.functions.invoke('update-patient', {
+        body: { patientId, updates }
+      })
+    ).pipe(
+      map(response => {
+        if (response.error) {
+          throw new Error(response.error.message);
+        }
+        return response.data;
+      }),
+      catchError(error => {
+        console.error('Error updating patient profile via Edge Function:', error);
+        throw error;
+      })
+    );
+  }
 }

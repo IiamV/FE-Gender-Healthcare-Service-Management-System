@@ -2,19 +2,19 @@
 <body>
 <div class="dashboard-container">
   <!-- Loading State -->
-  <div *ngIf="isLoading" class="loading-container">
+  <div *ngIf="dashboardState.isLoading" class="loading-container">
     <div class="loading-spinner"></div>
     <p class="loading-text">Loading dashboard data...</p>
   </div>
 
   <!-- Error State -->
-  <div *ngIf="errorMessage && !isLoading" class="error-container">
+  <div *ngIf="dashboardState.error && !dashboardState.isLoading" class="error-container">
     <div class="error-icon">⚠️</div>
-    <p class="error-message">{{ errorMessage }}</p>
+    <p class="error-message">{{ dashboardState.error }}</p>
     <button class="retry-btn" (click)="refreshDashboard()">Try Again</button>
   </div>
 
-  <div class="dashboard-content" *ngIf="!isLoading && !errorMessage">
+  <div class="dashboard-content" *ngIf="!dashboardState.isLoading && !dashboardState.error">
     <div class="dashboard-sidebar">
       <div class="dashboard-avatar">
         <img
@@ -41,7 +41,6 @@
         
       <div class="dashboard-info">
         <h1 class="dashboard-name">{{ dashboard.name }}</h1>
-        <p class="dashboard-handle">{{ dashboard.pronouns }}</p>
         <p class="dashboard-bio">{{ dashboard.bio }}</p>
         
         <button class="edit-dashboard-btn" (click)="toggleEdit()" [disabled]="isProfileSaving">
@@ -72,36 +71,6 @@
               class="form-textarea"
               rows="3">
             </textarea>
-          </div>
-
-          <div class="form-group">
-            <label for="pronouns">Pronouns</label>
-            <input 
-              type="text" 
-              id="pronouns"
-              [(ngModel)]="editdashboard.pronouns" 
-              class="form-input"
-              placeholder="e.g., he/him, she/her, they/them">
-          </div>
-
-          <div class="form-group">
-            <label for="location">Location</label>
-            <input 
-              type="text" 
-              id="location" 
-              [(ngModel)]="editdashboard.location" 
-              class="form-input"
-              placeholder="City, Country">
-          </div>
-
-          <div class="form-group">
-            <label for="website">Website</label>
-            <input
-              type="url"
-              id="website"
-              [(ngModel)]="editdashboard.website"
-              class="form-input"
-              placeholder="https://example.com">
           </div>
 
           <!-- New Profile Fields -->
